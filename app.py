@@ -1058,13 +1058,21 @@ def install_console_handler(server):
 
 def notify_running_and_exit(port: int):
     url = f"http://127.0.0.1:{port}/"
-    print(f"服务已在运行：{url}")
-    print("已为你打开网页。本窗口即将自动关闭，不会影响正在运行的服务。")
+    print("程序已在运行，已为你打开网页。")
+    print(f"服务地址：{url}")
+    print()
+    print("注意：本窗口只是「提示」，关闭它不会影响正在运行的程序。")
+    print("要停止程序，请关闭那个标题为「B站视频转文档 · 本地服务」的命令行窗口，")
+    print("或点击网页底部的「停止程序」按钮。")
+    print()
     try:
         webbrowser.open(url)
     except Exception:
         pass
-    time.sleep(2.5)
+    try:
+        input("按回车键关闭本提示窗口…")
+    except Exception:
+        time.sleep(5)
 
 
 def main():

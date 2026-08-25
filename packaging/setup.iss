@@ -1,6 +1,6 @@
 ﻿; B站视频转文档 安装脚本 (Inno Setup 6)
 #define MyAppName "B站视频转文档"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppExeName "bili2doc.exe"
 
 [Setup]
@@ -13,7 +13,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\app.ico
 OutputDir=..\installer
-OutputBaseFilename=bili2doc-setup-1.0.1
+OutputBaseFilename=bili2doc-setup-1.0.2
 SetupIconFile=..\app.ico
 Compression=lzma2
 SolidCompression=yes

@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 APP_NAME = "bilibili-to-doc"
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 # PyInstaller 打包后（frozen）以 exe 所在目录为根目录
 if getattr(sys, "frozen", False):

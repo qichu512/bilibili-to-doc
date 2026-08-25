@@ -8,6 +8,13 @@ __pycache__/
 *.pyc
 *.pyo
 
+# ===== 构建产物 =====
+build/
+dist/
+installer/
+build-tools/
+*.spec
+
 # ===== 系统杂物 =====
 Thumbs.db
 Desktop.ini

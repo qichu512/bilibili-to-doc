@@ -64,6 +64,23 @@ bili2doc/
 - yt-dlp：首次运行 `start.bat` 会自动安装；也可手动 `pip install -r requirements.txt`
 - 浏览器（仅「从浏览器读取 Cookies」模式需要）
 
+## 打包为安装程序（setup.exe）
+
+生成免 Python 环境的安装包，需要：PyInstaller、Inno Setup 6（含中文语言文件）、官方 yt-dlp.exe。
+
+```bash
+pip install pyinstaller
+# 1. 下载官方 yt-dlp.exe 到 build-tools\yt-dlp.exe
+# 2. 冻结应用（web/ 目录自动打包进去）
+python -m PyInstaller --noconfirm --clean --onedir --console --contents-directory . --name bili2doc --icon app.ico --add-data "web;web" app.py
+# 3. 把 yt-dlp.exe 放进 dist\bili2doc\
+copy build-tools\yt-dlp.exe dist\bili2doc\
+# 4. 用 Inno Setup 编译 packaging\setup.iss → installer\bili2doc-setup-1.0.0.exe
+ISCC.exe packaging\setup.iss
+```
+
+安装包特点：免 Python 环境、自动创建桌面快捷方式、关闭命令行窗口即停止；安装时自动从 `C:\common\bili2doc` 迁移已有配置（config.json / data），卸载时保留用户配置。
+
 ## 常见问题
 
 - **提示"未能获取到字幕"**：先看报错里列出的可用字幕语言。若没有任何字幕，说明该视频本身没字幕，无法提取；若显示有 `ai-zh`/`zh-Hans` 等但提取失败，一般是 B 站风控间歇性拦截，程序会自动重试 3 次，稍等片刻或再点一次即可。B 站 AI 字幕需要登录态，请确认已在设置中导入有效的 B 站 Cookies（推荐浏览器扩展 *Get cookies.txt LOCALLY* 导出，或选择「从浏览器读取」）。

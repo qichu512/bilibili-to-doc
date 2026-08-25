@@ -35,7 +35,11 @@ from pathlib import Path
 APP_NAME = "bilibili-to-doc"
 VERSION = "1.0.0"
 
-ROOT = Path(__file__).resolve().parent
+# PyInstaller 打包后（frozen）以 exe 所在目录为根目录
+if getattr(sys, "frozen", False):
+    ROOT = Path(sys.executable).resolve().parent
+else:
+    ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 DATA_DIR = ROOT / "data"
 CONFIG_FILE = ROOT / "config.json"
@@ -176,6 +180,9 @@ def cookie_args(cfg) -> list:
 # yt-dlp
 # --------------------------------------------------------------------------
 def yt_dlp_cmd() -> list:
+    # 打包后使用安装目录下自带的 yt-dlp.exe；开发模式使用本机 Python 的 yt_dlp 模块
+    if getattr(sys, "frozen", False):
+        return [str(Path(sys.executable).resolve().parent / "yt-dlp.exe")]
     return [sys.executable, "-m", "yt_dlp"]
 
 

@@ -13,6 +13,7 @@ B站视频转文档 (bilibili-to-doc) — 本地 Web 应用
 """
 
 import glob as globmod
+import http.client
 import json
 import logging
 import os
@@ -300,7 +301,7 @@ def build_messages(title, uploader, video_id, url, transcript):
     ]
 
 
-def call_ai(base_url, api_key, model, messages, job=None, timeout=1500):
+def call_ai(base_url, api_key, model, messages, job=None, timeout=1500, retries=3):
     base = (base_url or "").strip().rstrip("/")
     if not base:
         raise RuntimeError("尚未配置 AI 接口地址，请点击输入框右上角 ⚙ 设置")
@@ -316,38 +317,74 @@ def call_ai(base_url, api_key, model, messages, job=None, timeout=1500):
         "temperature": 0.3,
     }).encode("utf-8")
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    try:
-        resp = urllib.request.urlopen(req, timeout=timeout)
-    except urllib.error.HTTPError as e:
-        raw = e.read(6000).decode("utf-8", "replace")
-        msg = raw
-        try:
-            j = json.loads(raw)
-            err = j.get("error")
-            if isinstance(err, dict):
-                msg = err.get("message") or raw
-            elif err:
-                msg = str(err)
-            else:
-                msg = j.get("message") or raw
-        except Exception:
-            pass
-        raise RuntimeError(f"AI 接口返回错误（HTTP {e.code}）：{msg[:800]}")
-    except urllib.error.URLError as e:
-        raise RuntimeError(f"无法连接 AI 接口：{e.reason}")
 
-    chunks = []
-    while True:
+    last_err = None
+    raw = b""
+    for attempt in range(1, retries + 1):
+        if attempt > 1:
+            time.sleep(3 * attempt)
         if job is not None and job.get("cancel"):
             raise JobCancelled()
-        chunk = resp.read(65536)
-        if not chunk:
+
+        # --- 建立连接 ---
+        try:
+            resp = urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            err_body = e.read(6000).decode("utf-8", "replace")
+            msg = err_body
+            try:
+                j = json.loads(err_body)
+                err = j.get("error")
+                if isinstance(err, dict):
+                    msg = err.get("message") or err_body
+                elif err:
+                    msg = str(err)
+                else:
+                    msg = j.get("message") or err_body
+            except Exception:
+                pass
+            # 限流/服务端临时错误：可重试；其余（401/403 等）直接报错
+            if e.code in (429, 500, 502, 503, 504) and attempt < retries:
+                last_err = f"HTTP {e.code}：{msg[:200]}"
+                continue
+            raise RuntimeError(f"AI 接口返回错误（HTTP {e.code}）：{msg[:800]}")
+        except urllib.error.URLError as e:
+            last_err = str(e.reason)
+            if attempt < retries:
+                continue
+            raise RuntimeError(f"无法连接 AI 接口：{e.reason}")
+
+        # --- 读取响应（网络可能中途断开） ---
+        try:
+            chunks = []
+            while True:
+                if job is not None and job.get("cancel"):
+                    raise JobCancelled()
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            raw = b"".join(chunks)
             break
-        chunks.append(chunk)
-    resp.close()
+        except JobCancelled:
+            raise
+        except (http.client.IncompleteRead, http.client.RemoteDisconnected,
+                ConnectionResetError, ConnectionAbortedError, BrokenPipeError,
+                TimeoutError) as e:
+            last_err = str(e)
+            if attempt < retries:
+                continue
+            raise RuntimeError(
+                f"AI 接口响应中断（网络连接在传输中被断开，已重试 {retries} 次仍失败：{e}）。"
+                "请检查网络后重试；若反复出现，可在设置中换一个 API 地址。")
+        finally:
+            try:
+                resp.close()
+            except Exception:
+                pass
 
     try:
-        data = json.loads(b"".join(chunks).decode("utf-8"))
+        data = json.loads(raw.decode("utf-8"))
     except Exception as e:
         raise RuntimeError(f"AI 接口返回内容无法解析：{e}")
     try:

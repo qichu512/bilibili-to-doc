@@ -1,0 +1,13 @@
+# ===== 敏感数据，绝对不要提交到仓库 =====
+config.json
+data/
+*.log
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+
+# ===== 系统杂物 =====
+Thumbs.db
+Desktop.ini

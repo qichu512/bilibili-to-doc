@@ -1,0 +1,14 @@
+{
+  "cookies": {
+    "mode": "none",
+    "browser": "chrome",
+    "file_name": ""
+  },
+  "ai": {
+    "base_url": "https://api.deepseek.com/v1",
+    "api_key": "在此填入你的 API Key",
+    "model": "deepseek-chat",
+    "max_chars": 60000
+  },
+  "output_dir": "C:\\Users\\你的用户名\\Desktop"
+}

@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B站视频转文档</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='4' width='56' height='56' rx='14' fill='%23FB7299'/%3E%3Cpath d='M26 21 L46 32 L26 43 Z' fill='white'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --pink: #FB7299;
+    --pink-dark: #f25d8a;
+    --pink-soft: #fdeef3;
+    --ink: #232328;
+    --gray: #7a7a85;
+    --line: #e8e8ee;
+    --danger: #e5484d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    color: var(--ink);
+    background: linear-gradient(160deg, #fff2f7 0%, #ffffff 42%, #f2f6ff 100%);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  header { text-align: center; margin-top: 7vh; }
+  .logo {
+    width: 64px; height: 64px; margin: 0 auto 14px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #ff8fb1, var(--pink));
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 24px rgba(251, 114, 153, .35);
+  }
+  header h1 { font-size: 26px; font-weight: 700; letter-spacing: .5px; }
+  header p.sub { color: var(--gray); font-size: 14px; margin-top: 8px; }
+
+  main { width: min(660px, 92vw); margin: 34px 0 0; }
+  .card {
+    background: #fff;
+    border: 1px solid rgba(251, 114, 153, .08);
+    border-radius: 18px;
+    padding: 26px;
+    box-shadow: 0 12px 40px rgba(251, 114, 153, .13);
+  }
+
+  /* ---- 输入区 ---- */
+  .input-wrap { position: relative; }
+  #urlInput {
+    width: 100%;
+    padding: 15px 54px 15px 18px;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--ink);
+    border: 1.5px solid var(--line);
+    border-radius: 13px;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+    background: #fafafc;
+  }
+  #urlInput::placeholder { color: #b3b3bd; }
+  #urlInput:focus {
+    border-color: var(--pink);
+    box-shadow: 0 0 0 4px rgba(251, 114, 153, .13);
+    background: #fff;
+  }
+  #settingsBtn {
+    position: absolute;
+    top: 7px; right: 7px;
+    width: 40px; height: 40px;
+    border: none; border-radius: 10px;
+    background: transparent;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #8a8a96;
+    transition: background .15s, color .15s, transform .3s;
+  }
+  #settingsBtn:hover { background: var(--pink-soft); color: var(--pink); transform: rotate(30deg); }
+  #settingsBtn svg { width: 21px; height: 21px; }
+
+  #convertBtn {
+    width: 100%;
+    margin-top: 16px;
+    padding: 14px;
+    font-size: 16px; font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, #ff8fb1, var(--pink));
+    border: none; border-radius: 13px;
+    cursor: pointer;
+    transition: filter .15s, transform .05s;
+  }
+  #convertBtn:hover:not(:disabled) { filter: brightness(1.06); }
+  #convertBtn:active:not(:disabled) { transform: scale(.995); }
+  #convertBtn:disabled { background: #e6e6ec; cursor: not-allowed; }
+
+  .hint { margin-top: 12px; font-size: 12.5px; color: var(--gray); line-height: 1.6; }
+  .hint a { color: var(--pink); cursor: pointer; text-decoration: none; }
+  .hint a:hover { text-decoration: underline; }
+  .hint.warn { color: #c07a2f; }
+
+  /* ---- 状态区 ---- */
+  #statusBox { margin-top: 16px; display: none; }
+  #statusBox.running { display: flex; align-items: center; gap: 12px; }
+  #statusBox.errorBox { display: block; }
+  .spinner {
+    width: 20px; height: 20px; flex: none;
+    border: 3px solid var(--pink-soft);
+    border-top-color: var(--pink);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .stage-text { font-size: 14px; color: var(--ink); }
+  .stage-sub { font-size: 12px; color: var(--gray); margin-top: 2px; }
+  .error-box {
+    background: #fdf1f1;
+    border: 1px solid #f5c6c6;
+    border-radius: 12px;
+    padding: 14px 16px;
+    color: #a13a3a;
+    font-size: 13.5px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 260px;
+    overflow: auto;
+  }
+  .cancel-btn {
+    margin-top: 10px; padding: 6px 14px;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; color: var(--gray); font-size: 13px; cursor: pointer;
+  }
+  .cancel-btn:hover { border-color: var(--pink); color: var(--pink); }
+
+  /* ---- 结果区 ---- */
+  #resultCard { margin-top: 22px; display: none; }
+  .result-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .result-head .grow { flex: 1 1 300px; min-width: 0; }
+  .result-title { font-size: 18px; font-weight: 700; line-height: 1.4; word-break: break-word; }
+  .result-meta { color: var(--gray); font-size: 12.5px; margin-top: 6px; }
+  .result-path {
+    margin-top: 6px; font-size: 12.5px; color: var(--gray);
+    background: #f7f7fa; border-radius: 8px; padding: 6px 10px;
+    word-break: break-all;
+  }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    padding: 8px 14px; font-size: 13px;
+    border-radius: 9px; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--pink); color: var(--pink); }
+  .btn.primary { background: var(--pink); border-color: var(--pink); color: #fff; font-weight: 600; }
+  .btn.primary:hover { background: var(--pink-dark); }
+
+  /* ---- Markdown 预览 ---- */
+  .md-preview {
+    margin-top: 16px;
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+    max-height: 560px;
+    overflow: auto;
+    font-size: 14.5px;
+    line-height: 1.75;
+    word-break: break-word;
+  }
+  .md-preview h1 { font-size: 21px; margin: 18px 0 10px; }
+  .md-preview h2 { font-size: 18px; margin: 18px 0 8px; padding-bottom: 6px; border-bottom: 1px solid #f0f0f4; }
+  .md-preview h3 { font-size: 16px; margin: 14px 0 6px; }
+  .md-preview h4, .md-preview h5, .md-preview h6 { font-size: 14.5px; margin: 12px 0 4px; }
+  .md-preview p { margin: 8px 0; }
+  .md-preview ul, .md-preview ol { margin: 8px 0 8px 24px; }
+  .md-preview li { margin: 3px 0; }
+  .md-preview blockquote {
+    margin: 10px 0; padding: 8px 14px;
+    border-left: 3px solid var(--pink);
+    background: #fdf6f8; color: #6b6b76; border-radius: 0 8px 8px 0;
+  }
+  .md-preview code {
+    background: #f4f4f8; border-radius: 5px;
+    padding: 1.5px 6px; font-size: 13px;
+    font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+  }
+  .md-preview .code-block {
+    background: #1e1e2a; color: #e8e8f0;
+    border-radius: 10px; margin: 10px 0;
+    overflow: auto;
+  }
+  .md-preview .code-block .code-lang {
+    padding: 6px 14px 0; font-size: 11px; color: #9a9ab0;
+    font-family: Consolas, monospace;
+  }
+  .md-preview .code-block code {
+    display: block; padding: 8px 14px 12px;
+    background: transparent; color: inherit; font-size: 13px; line-height: 1.6;
+    white-space: pre;
+  }
+  .md-preview table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 13.5px; }
+  .md-preview th, .md-preview td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; }
+  .md-preview th { background: #fbf4f7; font-weight: 600; }
+  .md-preview hr { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
+  .md-preview a { color: var(--pink); }
+  .md-preview em { color: #8a8a96; }
+  .quit-link {
+    margin-top: 8px;
+    border: none; background: transparent;
+    color: #b0b0ba; font-size: 12px; cursor: pointer;
+    text-decoration: underline;
+  }
+  .quit-link:hover { color: var(--danger); }
+  .banner {
+    background: #fff8ec;
+    border: 1.5px solid #f0d9a8;
+    box-shadow: none;
+  }
+  .banner-title { font-size: 15px; font-weight: 700; color: #a06a1e; }
+  .banner-text { font-size: 13px; color: #8a6a3a; margin-top: 6px; line-height: 1.7; }
+  .banner .btn { margin-top: 12px; }
+
+  footer { margin: 34px 0 26px; color: #b0b0ba; font-size: 12px; text-align: center; }
+  .hidden { display: none !important; }
+
+  /* ---- 设置弹窗 ---- */
+  .modal {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(30, 30, 40, .45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px;
+  }
+  .modal-box {
+    width: min(580px, 100%);
+    max-height: 88vh;
+    overflow: auto;
+    background: #fff;
+    border-radius: 16px;
+    padding: 22px 24px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .25);
+  }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .modal-head h2 { font-size: 18px; }
+  .modal-head button {
+    width: 32px; height: 32px; border: none; border-radius: 8px;
+    background: transparent; font-size: 20px; color: var(--gray); cursor: pointer;
+  }
+  .modal-head button:hover { background: #f4f4f8; color: var(--ink); }
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+  .tabs button {
+    border: none; background: transparent; cursor: pointer;
+    padding: 9px 14px; font-size: 14px; color: var(--gray);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tabs button.active { color: var(--pink); border-bottom-color: var(--pink); font-weight: 600; }
+  .tabpane { display: block; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field input[type="text"], .field input[type="password"], .field input[type="number"], .field select, .field textarea {
+    width: 100%;
+    padding: 9px 12px;
+    font-size: 13.5px;
+    border: 1.5px solid var(--line);
+    border-radius: 9px;
+    outline: none;
+    font-family: inherit;
+    background: #fafafc;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    border-color: var(--pink);
+    box-shadow: 0 0 0 3px rgba(251, 114, 153, .12);
+    background: #fff;
+  }
+  .field textarea { min-height: 84px; resize: vertical; font-family: Consolas, "Courier New", monospace; font-size: 12.5px; }
+  .field .sub { font-size: 12px; color: var(--gray); margin-top: 5px; line-height: 1.6; }
+  .key-wrap { position: relative; }
+  .key-wrap input { padding-right: 44px !important; }
+  .key-eye {
+    position: absolute; top: 6px; right: 6px;
+    width: 30px; height: 30px; border: none; border-radius: 7px;
+    background: transparent; cursor: pointer; color: var(--gray); font-size: 15px;
+  }
+  .key-eye:hover { background: var(--pink-soft); color: var(--pink); }
+
+  .opt-card {
+    display: flex; align-items: flex-start; gap: 10px;
+    border: 1.5px solid var(--line); border-radius: 11px;
+    padding: 11px 13px; margin-bottom: 9px; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .opt-card:hover { border-color: #f5b9cc; }
+  .opt-card.on { border-color: var(--pink); background: #fffafc; }
+  .opt-card input[type="radio"] { margin-top: 3px; accent-color: var(--pink); }
+  .opt-card .t { font-size: 13.5px; font-weight: 600; }
+  .opt-card .d { font-size: 12px; color: var(--gray); margin-top: 2px; line-height: 1.5; }
+  .cond { margin: 10px 0 6px 24px; }
+  .cond.hidden { display: none; }
+
+  .file-row { display: flex; gap: 8px; align-items: center; }
+  .file-row .name { flex: 1; font-size: 12.5px; color: var(--gray); word-break: break-all; }
+  .test-row { display: flex; gap: 8px; align-items: center; }
+  .test-msg { font-size: 12.5px; margin-top: 6px; line-height: 1.6; }
+  .test-msg.ok { color: #2e9e5b; }
+  .test-msg.fail { color: var(--danger); }
+
+  .modal-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line);
+  }
+  #saveMsg { font-size: 13px; color: #2e9e5b; }
+  #saveMsg.err { color: var(--danger); }
+  #saveSettings { padding: 9px 22px; }
+  @media (max-width: 480px) {
+    header { margin-top: 4vh; }
+    main { margin-top: 22px; }
+    .card { padding: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="34" height="34" viewBox="0 0 64 64"><path d="M24 18 L46 32 L24 46 Z" fill="white"/></svg>
+  </div>
+  <h1>B站视频转文档</h1>
+  <p class="sub">粘贴 B 站视频链接，一键提取 AI 字幕并整理成结构化 Markdown 文档</p>
+</header>
+
+<main>
+  <div class="card banner hidden" id="offlineBanner">
+    <div class="banner-title">⚠️ 无法连接本地服务（程序未运行）</div>
+    <div class="banner-text">
+      本地服务未启动或已停止。请<b>双击桌面「B站视频转文档」快捷方式</b>，
+      等弹出的命令行窗口显示「服务已启动」并自动打开本网页后，点击下方「重试连接」。
+    </div>
+    <button class="btn primary" id="retryConnBtn">重试连接</button>
+  </div>
+  <div class="card">
+    <div class="input-wrap">
+      <input id="urlInput" type="text" spellcheck="false" autocomplete="off"
+             placeholder="粘贴 B 站视频链接，如 https://www.bilibili.com/video/BV1xxxxxxxxxx">
+      <button id="settingsBtn" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+    <button id="convertBtn">生成文档</button>
+    <div id="cookieHint" class="hint warn hidden">💡 尚未配置 B 站 Cookies，部分视频的 AI 字幕需要登录后才能获取 —— <a id="hintLink">去设置</a></div>
+    <div id="statusBox">
+      <div class="spinner"></div>
+      <div>
+        <div class="stage-text" id="stageText">处理中…</div>
+        <div class="stage-sub" id="stageSub"></div>
+        <button class="cancel-btn" id="cancelBtn">取消任务</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="resultCard">
+    <div class="result-head">
+      <div class="grow">
+        <div class="result-title" id="resultTitle"></div>
+        <div class="result-meta" id="resultMeta"></div>
+        <div class="result-path" id="resultPath"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="openFolderBtn">📁 打开所在文件夹</button>
+        <button class="btn" id="downloadBtn">⬇ 下载 .md 文件</button>
+        <button class="btn primary" id="copyBtn">📋 复制全文</button>
+        <button class="btn" id="newTaskBtn">↺ 新任务</button>
+      </div>
+    </div>
+    <div class="md-preview" id="mdPreview"></div>
+  </div>
+</main>
+
+<footer>本地运行 · 数据不出本机 · yt-dlp <span id="ytdlpVer">-</span> · v<span id="appVer">-</span><br>
+<button id="quitBtn" class="quit-link" title="停止本地服务并退出程序">⏹ 停止程序</button></footer>
+
+<!-- ================= 设置弹窗 ================= -->
+<div class="modal hidden" id="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>设置</h2>
+      <button id="closeModal" title="关闭">×</button>
+    </div>
+
+    <div class="tabs">
+      <button data-tab="cookies" class="active">🍪 B站 Cookies</button>
+      <button data-tab="ai">🤖 AI 模型 API</button>
+      <button data-tab="save">📁 保存</button>
+    </div>
+
+    <!-- Cookies -->
+    <div class="tabpane" id="tab-cookies">
+      <label class="opt-card" data-mode="none">
+        <input type="radio" name="cookieMode" value="none">
+        <div><div class="t">不使用 Cookies（游客模式）</div>
+        <div class="d">无需登录，但很多视频的 AI 字幕无法获取，普通字幕也可能受限</div></div>
+      </label>
+      <label class="opt-card" data-mode="browser">
+        <input type="radio" name="cookieMode" value="browser">
+        <div><div class="t">从浏览器读取登录状态</div>
+        <div class="d">直接读取本机浏览器的 B 站登录 Cookies（需先在该浏览器登录 B 站）</div></div>
+      </label>
+      <div class="cond hidden" id="cond-browser">
+        <div class="field">
+          <label>浏览器</label>
+          <select id="browserSelect">
+            <option value="chrome">Chrome（谷歌浏览器）</option>
+            <option value="edge">Edge（微软浏览器）</option>
+            <option value="firefox">Firefox（火狐）</option>
+            <option value="safari">Safari</option>
+          </select>
+        </div>
+      </div>
+      <label class="opt-card" data-mode="file">
+        <input type="radio" name="cookieMode" value="file">
+        <div><div class="t">导入 cookies.txt 文件</div>
+        <div class="d">推荐使用浏览器扩展（如 Get cookies.txt LOCALLY）导出 B 站的 cookies.txt，本工具也支持直接解析任意格式</div></div>
+      </label>
+      <div class="cond hidden" id="cond-file">
+        <div class="file-row">
+          <button class="btn" id="pickCookieFile">选择文件</button>
+          <span class="name" id="cookieFileName">未选择文件</span>
+        </div>
+        <input type="file" id="cookieFileInput" accept=".txt,.text" class="hidden">
+      </div>
+      <label class="opt-card" data-mode="text">
+        <input type="radio" name="cookieMode" value="text">
+        <div><div class="t">粘贴 Cookie 文本</div>
+        <div class="d">从浏览器开发者工具复制请求头里的 Cookie（name=value; name=value 格式）粘贴到下方</div></div>
+      </label>
+      <div class="cond hidden" id="cond-text">
+        <div class="field">
+          <textarea id="cookieText" placeholder="SESSDATA=xxxxxxxx; bili_jct=xxxxxxxx; buvid3=xxxxxxxx; ..."></textarea>
+          <div class="sub">建议至少包含 SESSDATA（B 站登录态核心字段）</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI API -->
+    <div class="tabpane hidden" id="tab-ai">
+      <div class="field">
+        <label>API 地址（Base URL）</label>
+        <input type="text" id="aiBaseUrl" placeholder="https://api.deepseek.com/v1">
+        <div class="sub">兼容 OpenAI 格式的接口地址，一般以 /v1 结尾；若接口是完整路径（…/chat/completions）也可直接填写</div>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <div class="key-wrap">
+          <input type="password" id="aiKey" placeholder="sk-..." autocomplete="off">
+          <button class="key-eye" id="keyEye" title="显示/隐藏">👁</button>
+        </div>
+        <div class="sub" id="keyHint"></div>
+      </div>
+      <div class="field">
+        <label>模型名称</label>
+        <input type="text" id="aiModel" placeholder="deepseek-chat">
+        <div class="sub">例如 deepseek-chat、gpt-4o-mini、moonshot-v1-8k、qwen-plus 等</div>
+      </div>
+      <div class="field">
+        <label>发送给 AI 的字幕最大长度（字符）</label>
+        <input type="number" id="aiMaxChars" min="1000" max="500000" step="1000" value="60000">
+        <div class="sub">字幕超过该长度会被截断，防止超出模型上下文；视频较长时可调大（需模型支持）</div>
+      </div>
+      <div class="field">
+        <div class="test-row">
+          <button class="btn" id="testAiBtn">🔌 测试连接</button>
+        </div>
+        <div class="test-msg" id="testAiMsg"></div>
+      </div>
+    </div>
+
+    <!-- 保存 -->
+    <div class="tabpane hidden" id="tab-save">
+      <div class="field">
+        <label>文档保存目录</label>
+        <input type="text" id="outputDir">
+        <div class="sub">生成后的 .md 文档保存位置；默认保存到桌面</div>
+      </div>
+      <div class="field">
+        <button class="btn" id="resetDirBtn">恢复默认（桌面）</button>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <span id="saveMsg"></span>
+      <button class="btn primary" id="saveSettings">保存设置</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const state = { cfg: null, jobId: null, pollTimer: null, fileCookieText: "", keyEdited: false };
+
+/* ================= 基础 ================= */
+function showOffline() { $("offlineBanner").classList.remove("hidden"); }
+function hideOffline() { $("offlineBanner").classList.add("hidden"); }
+
+async function api(path, opts) {
+  let res;
+  try {
+    res = await fetch(path, opts);
+  } catch (e) {
+    showOffline();
+    throw new Error("无法连接本地服务：程序未启动或已停止。请双击桌面「B站视频转文档」快捷方式启动程序后重试。");
+  }
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
+  return data;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function inline(s) {
+  s = s.replace(/`([^`]+)`/g, (m, c) => "<code>" + c + "</code>");
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return s;
+}
+
+/* 轻量 Markdown 渲染（已转义，安全） */
+function renderMarkdown(md) {
+  const lines = String(md).split("\n");
+  let html = "", para = [], listType = null, tableRows = [], inCode = false, codeBuf = [], codeLang = "";
+  const flushPara = () => { if (para.length) { html += "<p>" + inline(para.join("<br>")) + "</p>"; para = []; } };
+  const flushList = () => { if (listType) { html += "</" + listType + ">"; listType = null; } };
+  const flushTable = () => {
+    if (!tableRows.length) return;
+    const parse = (r) => r.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map(c => c.trim());
+    const rows = tableRows.map(parse);
+    let bodyStart = 0, head = null;
+    if (rows.length >= 2 && rows[1].every(c => /^:?-{3,}:?$/.test(c))) { head = rows[0]; bodyStart = 2; }
+    html += "<table>";
+    if (head) html += "<thead><tr>" + head.map(c => "<th>" + inline(esc(c)) + "</th>").join("") + "</tr></thead>";
+    html += "<tbody>";
+    for (let i = bodyStart; i < rows.length; i++)
+      html += "<tr>" + rows[i].map(c => "<td>" + inline(esc(c)) + "</td>").join("") + "</tr>";
+    html += "</tbody></table>";
+    tableRows = [];
+  };
+  for (const line of lines) {
+    if (!inCode && /^\s*```/.test(line)) {
+      inCode = true; codeLang = line.trim().slice(3).trim(); codeBuf = [];
+      flushPara(); flushList(); flushTable(); continue;
+    }
+    if (inCode) {
+      if (/^\s*```/.test(line)) {
+        inCode = false;
+        html += '<pre class="code-block">' + (codeLang ? '<div class="code-lang">' + esc(codeLang) + "</div>" : "") +
+                "<code>" + esc(codeBuf.join("\n")) + "</code></pre>";
+      } else codeBuf.push(line);
+      continue;
+    }
+    const t = line.trim();
+    if (!t) { flushPara(); flushList(); flushTable(); continue; }
+    const h = t.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { flushPara(); flushList(); flushTable();
+      const lv = h[1].length; html += "<h" + lv + ">" + inline(h[2]) + "</h" + lv + ">"; continue; }
+    if (/^(-{3,}|\*{3,})$/.test(t)) { flushPara(); flushList(); flushTable(); html += "<hr>"; continue; }
+    if (/^\|.*\|$/.test(t)) { tableRows.push(t); flushPara(); flushList(); continue; }
+    const ul = t.match(/^[-*+]\s+(.*)$/);
+    if (ul) { flushPara(); flushTable();
+      if (listType !== "ul") { flushList(); listType = "ul"; html += "<ul>"; }
+      html += "<li>" + inline(ul[1]) + "</li>"; continue; }
+    const ol = t.match(/^\d+[.)]\s+(.*)$/);
+    if (ol) { flushPara(); flushTable();
+      if (listType !== "ol") { flushList(); listType = "ol"; html += "<ol>"; }
+      html += "<li>" + inline(ol[1]) + "</li>"; continue; }
+    if (t.startsWith(">")) { flushPara(); flushList(); flushTable();
+      html += "<blockquote>" + inline(t.replace(/^>\s?/, "")) + "</blockquote>"; continue; }
+    para.push(line);
+  }
+  if (inCode) html += '<pre class="code-block"><code>' + esc(codeBuf.join("\n")) + "</code></pre>";
+  flushPara(); flushList(); flushTable();
+  return html;
+}
+
+/* ================= 设置弹窗 ================= */
+function openModal(tab) {
+  $("modal").classList.remove("hidden");
+  switchTab(tab || "cookies");
+}
+function closeModal() { $("modal").classList.add("hidden"); }
+function switchTab(name) {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  ["cookies", "ai", "save"].forEach(n => $("tab-" + n).classList.toggle("hidden", n !== name));
+}
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+$("closeModal").addEventListener("click", closeModal);
+$("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closeModal(); });
+$("settingsBtn").addEventListener("click", () => openModal("cookies"));
+$("hintLink").addEventListener("click", () => openModal("cookies"));
+
+function refreshCookieModeUI() {
+  const mode = document.querySelector('input[name="cookieMode"]:checked').value;
+  document.querySelectorAll(".opt-card").forEach(c => c.classList.toggle("on", c.dataset.mode === mode));
+  ["browser", "file", "text"].forEach(n => $("cond-" + n).classList.toggle("hidden", n !== mode));
+}
+document.querySelectorAll('input[name="cookieMode"]').forEach(r =>
+  r.addEventListener("change", refreshCookieModeUI));
+
+$("pickCookieFile").addEventListener("click", () => $("cookieFileInput").click());
+$("cookieFileInput").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  state.fileCookieText = await f.text();
+  $("cookieFileName").textContent = f.name + "（" + (f.size / 1024).toFixed(1) + " KB）";
+});
+$("keyEye").addEventListener("click", () => {
+  const inp = $("aiKey");
+  inp.type = inp.type === "password" ? "text" : "password";
+});
+$("aiKey").addEventListener("input", () => { state.keyEdited = true; });
+$("resetDirBtn").addEventListener("click", () => {
+  if (state.cfg && state.cfg.desktop_dir) $("outputDir").value = state.cfg.desktop_dir;
+});
+$("testAiBtn").addEventListener("click", async () => {
+  const msg = $("testAiMsg");
+  msg.className = "test-msg"; msg.textContent = "正在测试…";
+  try {
+    const r = await api("/api/test-ai", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        base_url: $("aiBaseUrl").value.trim(),
+        api_key: $("aiKey").value.trim(),
+        model: $("aiModel").value.trim(),
+      }),
+    });
+    msg.className = "test-msg ok";
+    msg.textContent = "✅ 连接成功，模型回复：" + r.reply;
+  } catch (e) {
+    msg.className = "test-msg fail";
+    msg.textContent = "❌ " + e.message;
+  }
+});
+
+function fillSettings(cfg) {
+  const c = cfg.cookies || {};
+  const r = document.querySelector('input[name="cookieMode"][value="' + (c.mode || "none") + '"]');
+  if (r) r.checked = true;
+  $("browserSelect").value = c.browser || "chrome";
+  $("cookieFileName").textContent = c.file_name ? "已导入：" + c.file_name : "未选择文件";
+  state.fileCookieText = (c.mode === "file" && c.cookie_raw) ? c.cookie_raw : "";
+  $("cookieText").value = c.cookie_raw || "";
+  const a = cfg.ai || {};
+  $("aiBaseUrl").value = a.base_url || "";
+  $("aiModel").value = a.model || "";
+  $("aiMaxChars").value = a.max_chars || 60000;
+  $("aiKey").value = "";
+  $("keyHint").textContent = a.has_key
+    ? "已保存密钥：" + a.key_hint + "（留空则保持不变；清空输入框并保存即可清除密钥）"
+    : "尚未保存密钥";
+  $("outputDir").value = cfg.output_dir || cfg.desktop_dir || "";
+  refreshCookieModeUI();
+  const noCookies = !c.mode || c.mode === "none";
+  $("cookieHint").classList.toggle("hidden", !noCookies);
+}
+
+$("saveSettings").addEventListener("click", async () => {
+  const msg = $("saveMsg");
+  msg.className = ""; msg.textContent = "保存中…";
+  const mode = document.querySelector('input[name="cookieMode"]:checked').value;
+  let cookie_raw;
+  if (mode === "file") {
+    if (!state.fileCookieText) { msg.className = "err"; msg.textContent = "请先选择 cookies.txt 文件"; return; }
+    cookie_raw = state.fileCookieText;
+  } else if (mode === "text") {
+    cookie_raw = $("cookieText").value;
+  }
+  const keyVal = $("aiKey").value.trim();
+  const ai = {
+    base_url: $("aiBaseUrl").value.trim(),
+    model: $("aiModel").value.trim(),
+    max_chars: parseInt($("aiMaxChars").value || "60000", 10),
+  };
+  if (state.keyEdited) ai.api_key = keyVal === "" ? "__clear__" : keyVal;
+  try {
+    await api("/api/config", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cookies: {
+          mode, browser: $("browserSelect").value,
+          file_name: mode === "file" ? $("cookieFileName").textContent.replace(/^已导入：/, "") : "",
+          cookie_raw,
+        },
+        ai,
+        output_dir: $("outputDir").value.trim(),
+      }),
+    });
+    state.keyEdited = false;
+    msg.className = ""; msg.textContent = "✅ 已保存";
+    await loadConfig();
+    setTimeout(() => { msg.textContent = ""; }, 2000);
+  } catch (e) {
+    msg.className = "err"; msg.textContent = "保存失败：" + e.message;
+  }
+});
+
+/* ================= 配置加载 ================= */
+async function loadConfig() {
+  try {
+    state.cfg = await api("/api/config");
+    hideOffline();
+    fillSettings(state.cfg);
+    $("ytdlpVer").textContent = state.cfg.yt_dlp_version || "未检测到";
+    $("appVer").textContent = state.cfg.version;
+    if (!state.cfg.yt_dlp_version) {
+      $("cookieHint").textContent = "⚠️ 未检测到 yt-dlp，请先运行：pip install yt-dlp";
+      $("cookieHint").classList.remove("hidden");
+    }
+  } catch (e) {
+    $("ytdlpVer").textContent = "错误";
+  }
+}
+
+$("retryConnBtn").addEventListener("click", () => {
+  hideOffline();
+  loadConfig();
+});
+
+/* ================= 转换流程 ================= */
+function setRunning(stage, sub) {
+  $("statusBox").className = "running";
+  $("statusBox").style.display = "flex";
+  $("stageText").textContent = stage || "处理中…";
+  $("stageSub").textContent = sub || "";
+  $("convertBtn").disabled = true;
+}
+function setIdle() {
+  $("statusBox").className = "";
+  $("statusBox").style.display = "none";
+  $("convertBtn").disabled = false;
+}
+function showError(text) {
+  $("statusBox").className = "errorBox";
+  $("statusBox").style.display = "block";
+  $("statusBox").innerHTML = '<div class="error-box"></div>';
+  $("statusBox").querySelector(".error-box").textContent = text;
+  $("convertBtn").disabled = false;
+}
+
+async function startConvert() {
+  const url = $("urlInput").value.trim();
+  if (!url) { showError("请先粘贴 B 站视频链接"); return; }
+  if (!/bilibili\.com|b23\.tv|BV[0-9A-Za-z]{8,}/i.test(url)) {
+    showError("请输入有效的 B 站视频链接（如 https://www.bilibili.com/video/BV... 或 b23.tv 短链接）");
+    return;
+  }
+  $("resultCard").style.display = "none";
+  setRunning("提交任务…");
+  try {
+    const r = await api("/api/convert", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    state.jobId = r.job_id;
+    localStorage.setItem("bili2doc_last_job", r.job_id);
+    pollJob(r.job_id);
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function pollJob(jobId) {
+  if (state.pollTimer) clearInterval(state.pollTimer);
+  state.pollTimer = setInterval(async () => {
+    let job;
+    try { job = await api("/api/jobs/" + jobId); }
+    catch (e) { clearInterval(state.pollTimer); showError("查询任务失败：" + e.message); return; }
+    if (job.status === "running" || job.status === "queued") {
+      setRunning(job.stage);
+      return;
+    }
+    clearInterval(state.pollTimer); state.pollTimer = null;
+    localStorage.removeItem("bili2doc_last_job");
+    if (job.status === "done") {
+      setIdle();
+      renderResult(job.result);
+    } else if (job.status === "error") {
+      showError(job.error || "任务失败");
+    } else {
+      setIdle();
+    }
+  }, 1200);
+}
+
+function renderResult(r) {
+  $("resultCard").style.display = "block";
+  $("resultTitle").textContent = r.title;
+  const meta = [];
+  if (r.uploader) meta.push("UP主：" + r.uploader);
+  if (r.video_id) meta.push("ID：" + r.video_id);
+  if (r.truncated) meta.push("⚠️ 字幕过长已截断");
+  $("resultMeta").textContent = meta.join("  ·  ");
+  $("resultPath").textContent = "📄 " + r.file_path;
+  $("mdPreview").innerHTML = renderMarkdown(r.markdown);
+  $("resultCard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+$("convertBtn").addEventListener("click", startConvert);
+$("urlInput").addEventListener("keydown", (e) => { if (e.key === "Enter") startConvert(); });
+$("cancelBtn").addEventListener("click", async () => {
+  if (!state.jobId) return;
+  try { await api("/api/jobs/" + state.jobId + "/cancel", { method: "POST" }); }
+  catch (e) {}
+});
+$("openFolderBtn").addEventListener("click", async () => {
+  if (!state.jobId) return;
+  try { await api("/api/jobs/" + state.jobId + "/open-folder", { method: "POST" }); } catch (e) {}
+});
+$("downloadBtn").addEventListener("click", () => {
+  if (state.jobId) window.location.href = "/api/jobs/" + state.jobId + "/download";
+});
+$("copyBtn").addEventListener("click", async () => {
+  const job = await api("/api/jobs/" + state.jobId);
+  if (job.result) {
+    try {
+      await navigator.clipboard.writeText(job.result.markdown);
+      $("copyBtn").textContent = "✅ 已复制";
+      setTimeout(() => { $("copyBtn").textContent = "📋 复制全文"; }, 1500);
+    } catch (e) {}
+  }
+});
+$("newTaskBtn").addEventListener("click", () => {
+  $("resultCard").style.display = "none";
+  $("urlInput").value = "";
+  $("urlInput").focus();
+});
+$("quitBtn").addEventListener("click", async () => {
+  if (!confirm("确定要停止程序吗？\n停止后本网页将无法使用，需重新双击桌面快捷方式启动。")) return;
+  try { await api("/api/quit", { method: "POST" }); } catch (e) {}
+  document.body.innerHTML = '<div style="margin-top:20vh;text-align:center;color:#7a7a85;font-size:15px;line-height:2">程序已停止 🛑<br>如需再次使用，请双击桌面「B站视频转文档」快捷方式。</div>';
+});
+
+/* ================= 启动 ================= */
+(async function init() {
+  await loadConfig();
+  const last = localStorage.getItem("bili2doc_last_job");
+  if (last) {
+    try {
+      const job = await api("/api/jobs/" + last);
+      if (job.status === "running" || job.status === "queued") {
+        state.jobId = last;
+        setRunning(job.stage);
+        pollJob(last);
+      } else {
+        localStorage.removeItem("bili2doc_last_job");
+      }
+    } catch (e) { localStorage.removeItem("bili2doc_last_job"); }
+  }
+})();
+</script>
+</body>
+</html>

@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 APP_NAME = "bilibili-to-doc"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 # PyInstaller 打包后（frozen）以 exe 所在目录为根目录
 if getattr(sys, "frozen", False):
@@ -174,6 +174,95 @@ def cookie_args(cfg) -> list:
     if mode in ("file", "text") and COOKIES_FILE.exists():
         return ["--cookies", str(COOKIES_FILE)]
     return []
+
+
+# --------------------------------------------------------------------------
+# Cookies 有效性检测（调用 B 站登录接口，定时 + 手动触发）
+# --------------------------------------------------------------------------
+COOKIE_CHECK_INTERVAL = 180  # 秒
+COOKIE_STATUS = {"state": "unknown", "detail": "", "uname": "", "checked_at": 0}
+COOKIE_STATUS_LOCK = threading.Lock()
+
+_BILI_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+
+
+def cookies_to_header() -> tuple:
+    """把 data/cookies.txt 解析成 Cookie 请求头。返回 (header, 错误说明)。"""
+    if not COOKIES_FILE.exists():
+        return None, "未找到 Cookies 文件"
+    try:
+        lines = COOKIES_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as e:
+        return None, f"读取 Cookies 文件失败：{e}"
+    pairs = []
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 7 and parts[5]:
+            pairs.append(f"{parts[5]}={parts[6]}")
+    if not pairs:
+        return None, "Cookies 文件为空"
+    return "; ".join(pairs), None
+
+
+def check_cookies(force: bool = False) -> dict:
+    """检测当前配置的 Cookies 是否有效。结果缓存 COOKIE_CHECK_INTERVAL 秒。"""
+    global COOKIE_STATUS
+    now = time.time()
+    with COOKIE_STATUS_LOCK:
+        cached = dict(COOKIE_STATUS)
+    if not force and cached.get("state") not in ("unknown",) \
+            and now - cached.get("checked_at", 0) < COOKIE_CHECK_INTERVAL:
+        return cached
+
+    cfg = load_config()
+    mode = cfg["cookies"].get("mode", "none")
+    status = {"state": "unknown", "detail": "", "uname": "", "checked_at": now}
+    try:
+        if mode == "none":
+            status.update(state="none", detail="未配置 Cookies（游客模式）")
+        elif mode == "browser":
+            status.update(state="browser",
+                          detail=f"使用浏览器 Cookies（{cfg['cookies'].get('browser', 'chrome')}），无法直接检测有效性")
+        elif mode in ("file", "text"):
+            header, err = cookies_to_header()
+            if header is None:
+                status.update(state="invalid", detail=err)
+            else:
+                req = urllib.request.Request(
+                    "https://api.bilibili.com/x/web-interface/nav",
+                    headers={"User-Agent": _BILI_UA, "Referer": "https://www.bilibili.com/",
+                             "Accept": "application/json", "Cookie": header})
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    data = json.loads(resp.read().decode("utf-8", "replace"))
+                code = data.get("code")
+                d = data.get("data") or {}
+                if code == 0 and d.get("isLogin"):
+                    uname = str(d.get("uname") or "")
+                    status.update(state="valid", uname=uname,
+                                  detail=f"已登录：{uname}" if uname else "已登录")
+                elif code == -101:
+                    status.update(state="invalid", detail="未登录或 Cookies 已过期（SESSDATA 失效）")
+                else:
+                    status.update(state="invalid", detail=f"登录状态无效（code={code}）")
+    except Exception as e:
+        status.update(state="error", detail=f"检测失败（网络/接口问题）：{e}")
+    with COOKIE_STATUS_LOCK:
+        COOKIE_STATUS = status
+    return dict(status)
+
+
+def cookie_status_loop():
+    """后台线程：定时检测 Cookies 有效性。"""
+    while True:
+        try:
+            check_cookies(force=True)
+        except Exception as e:
+            log.warning("Cookie 定时检测失败: %s", e)
+        time.sleep(COOKIE_CHECK_INTERVAL)
 
 
 # --------------------------------------------------------------------------
@@ -623,6 +712,15 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/config":
                 self.send_json(public_config())
                 return
+            if path == "/api/cookie-status":
+                qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                force = qs.get("force", ["0"])[0] in ("1", "true")
+                if force:
+                    # 手动检测：后台执行，立即返回当前（旧）结果，前端稍后轮询即可
+                    threading.Thread(target=check_cookies, kwargs={"force": True},
+                                     daemon=True).start()
+                self.send_json(check_cookies(force=False))
+                return
             if path.startswith("/api/jobs/"):
                 rest = path[len("/api/jobs/"):]
                 if rest.endswith("/download"):
@@ -836,6 +934,8 @@ class Handler(BaseHTTPRequestHandler):
             cfg["output_dir"] = str(body["output_dir"]).strip()
 
         save_config(cfg)
+        # 配置变更后立即重新检测 Cookies 有效性
+        threading.Thread(target=check_cookies, kwargs={"force": True}, daemon=True).start()
         self.send_json({"ok": True})
 
     # ---- 静态文件 ----
@@ -1005,6 +1105,9 @@ def main():
     log.info("服务已启动: %s (PID %s)", url, os.getpid())
     print(f"服务已启动：{url}")
     print("正在打开浏览器…（关闭本窗口或按 Ctrl+C 即可停止程序）")
+    # 启动 Cookies 有效性定时检测
+    threading.Thread(target=cookie_status_loop, daemon=True).start()
+    threading.Thread(target=check_cookies, kwargs={"force": True}, daemon=True).start()
     if not no_open:
         try:
             webbrowser.open(url)

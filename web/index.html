@@ -100,6 +100,23 @@
   .hint a:hover { text-decoration: underline; }
   .hint.warn { color: #c07a2f; }
 
+  /* ---- Cookies 状态条 ---- */
+  .cookie-status {
+    margin-top: 12px; font-size: 12.5px;
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    line-height: 1.6; color: var(--gray);
+  }
+  .cookie-status .cs-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: #b8b8c2; }
+  .cookie-status.st-valid { color: #2e9e5b; }
+  .cookie-status.st-valid .cs-dot { background: #2e9e5b; box-shadow: 0 0 0 3px rgba(46,158,91,.15); }
+  .cookie-status.st-invalid { color: #d23f3f; }
+  .cookie-status.st-invalid .cs-dot { background: #d23f3f; box-shadow: 0 0 0 3px rgba(210,63,63,.15); }
+  .cookie-status.st-error { color: #c07a2f; }
+  .cookie-status.st-error .cs-dot { background: #e8a13c; }
+  .cookie-status .cs-time { opacity: .75; }
+  .cookie-status a { color: var(--pink); cursor: pointer; text-decoration: none; margin-left: 2px; }
+  .cookie-status a:hover { text-decoration: underline; }
+
   /* ---- 状态区 ---- */
   #statusBox { margin-top: 16px; display: none; }
   #statusBox.running { display: flex; align-items: center; gap: 12px; }
@@ -273,6 +290,10 @@
   }
   .field textarea { min-height: 84px; resize: vertical; font-family: Consolas, "Courier New", monospace; font-size: 12.5px; }
   .field .sub { font-size: 12px; color: var(--gray); margin-top: 5px; line-height: 1.6; }
+  .cookie-check-line { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .cookie-check-line .cs-dot { width: 9px; height: 9px; border-radius: 50%; background: #b8b8c2; flex: none; }
+  .cookie-check-line span:nth-child(2) { flex: 1; color: var(--ink); }
+  .cookie-check-line .btn { padding: 5px 12px; font-size: 12.5px; }
   .key-wrap { position: relative; }
   .key-wrap input { padding-right: 44px !important; }
   .key-eye {
@@ -348,7 +369,12 @@
       </button>
     </div>
     <button id="convertBtn">生成文档</button>
-    <div id="cookieHint" class="hint warn hidden">💡 尚未配置 B 站 Cookies，部分视频的 AI 字幕需要登录后才能获取 —— <a id="hintLink">去设置</a></div>
+    <div id="cookieStatus" class="cookie-status hidden">
+      <span class="cs-dot"></span>
+      <span id="cookieStatusText">正在检测 Cookies…</span>
+      <span class="cs-time" id="cookieStatusTime"></span>
+      <a id="cookieStatusLink">去设置</a>
+    </div>
     <div id="statusBox">
       <div class="spinner"></div>
       <div>
@@ -396,6 +422,11 @@
 
     <!-- Cookies -->
     <div class="tabpane" id="tab-cookies">
+      <div class="field cookie-check-line">
+        <span id="modalCookieDot" class="cs-dot"></span>
+        <span id="modalCookieText">—</span>
+        <button class="btn" id="checkCookiesBtn">立即检测</button>
+      </div>
       <label class="opt-card" data-mode="none">
         <input type="radio" name="cookieMode" value="none">
         <div><div class="t">不使用 Cookies（游客模式）</div>
@@ -497,7 +528,7 @@
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-const state = { cfg: null, jobId: null, pollTimer: null, fileCookieText: "", keyEdited: false };
+const state = { cfg: null, jobId: null, pollTimer: null, fileCookieText: "", keyEdited: false, ytdlpMissing: false };
 
 /* ================= 基础 ================= */
 function showOffline() { $("offlineBanner").classList.remove("hidden"); }
@@ -599,7 +630,7 @@ document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click
 $("closeModal").addEventListener("click", closeModal);
 $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closeModal(); });
 $("settingsBtn").addEventListener("click", () => openModal("cookies"));
-$("hintLink").addEventListener("click", () => openModal("cookies"));
+$("cookieStatusLink").addEventListener("click", () => openModal("cookies"));
 
 function refreshCookieModeUI() {
   const mode = document.querySelector('input[name="cookieMode"]:checked').value;
@@ -662,8 +693,6 @@ function fillSettings(cfg) {
     : "尚未保存密钥";
   $("outputDir").value = cfg.output_dir || cfg.desktop_dir || "";
   refreshCookieModeUI();
-  const noCookies = !c.mode || c.mode === "none";
-  $("cookieHint").classList.toggle("hidden", !noCookies);
 }
 
 $("saveSettings").addEventListener("click", async () => {
@@ -700,6 +729,7 @@ $("saveSettings").addEventListener("click", async () => {
     state.keyEdited = false;
     msg.className = ""; msg.textContent = "✅ 已保存";
     await loadConfig();
+    updateCookieStatus(true);
     setTimeout(() => { msg.textContent = ""; }, 2000);
   } catch (e) {
     msg.className = "err"; msg.textContent = "保存失败：" + e.message;
@@ -714,10 +744,8 @@ async function loadConfig() {
     fillSettings(state.cfg);
     $("ytdlpVer").textContent = state.cfg.yt_dlp_version || "未检测到";
     $("appVer").textContent = state.cfg.version;
-    if (!state.cfg.yt_dlp_version) {
-      $("cookieHint").textContent = "⚠️ 未检测到 yt-dlp，请先运行：pip install yt-dlp";
-      $("cookieHint").classList.remove("hidden");
-    }
+    state.ytdlpMissing = !state.cfg.yt_dlp_version;
+    updateCookieStatus(false);
   } catch (e) {
     $("ytdlpVer").textContent = "错误";
   }
@@ -726,6 +754,56 @@ async function loadConfig() {
 $("retryConnBtn").addEventListener("click", () => {
   hideOffline();
   loadConfig();
+});
+
+/* ================= Cookies 状态展示 ================= */
+function fmtAgo(ts) {
+  if (!ts) return "";
+  const s = Math.floor(Date.now() / 1000 - ts);
+  if (s < 5) return "刚刚检测";
+  if (s < 60) return s + " 秒前检测";
+  if (s < 3600) return Math.floor(s / 60) + " 分钟前检测";
+  return Math.floor(s / 3600) + " 小时前检测";
+}
+
+function renderCookieStatus(st) {
+  if (state.ytdlpMissing) {
+    return { text: "⚠️ 未检测到 yt-dlp，请先运行：pip install yt-dlp", cls: "st-error", time: "" };
+  }
+  const map = {
+    valid: { text: "🍪 Cookies 有效" + (st.uname ? "（" + st.uname + "）" : ""), cls: "st-valid" },
+    invalid: { text: "❌ Cookies 已失效，请重新导入", cls: "st-invalid" },
+    none: { text: "🍪 未配置 Cookies（部分视频的 AI 字幕需要登录后才能获取）", cls: "st-none" },
+    browser: { text: "🍪 浏览器模式，无法直接检测有效性", cls: "st-none" },
+    error: { text: "⚠️ " + (st.detail || "检测失败"), cls: "st-error" },
+    unknown: { text: "🍪 正在检测 Cookies…", cls: "st-none" },
+  };
+  return Object.assign(map[st.state] || { text: st.detail || st.state, cls: "st-none" },
+                      { time: (st.state === "valid" || st.state === "invalid" || st.state === "none" || st.state === "browser") ? fmtAgo(st.checked_at) : "" });
+}
+
+async function updateCookieStatus(force) {
+  try {
+    const st = await api("/api/cookie-status" + (force ? "?force=1" : ""));
+    const v = renderCookieStatus(st);
+    const el = $("cookieStatus");
+    el.classList.remove("hidden");
+    el.className = "cookie-status " + v.cls;
+    $("cookieStatusText").textContent = v.text;
+    $("cookieStatusTime").textContent = v.time;
+    $("cookieStatusLink").style.display = (st.state === "none" || st.state === "invalid") ? "" : "none";
+    // 设置弹窗内的状态
+    const dotMap = { valid: "#2e9e5b", invalid: "#d23f3f", error: "#e8a13c" };
+    $("modalCookieDot").style.background = dotMap[st.state] || "#b8b8c2";
+    $("modalCookieText").textContent = v.text + (v.time ? "（" + v.time + "）" : "");
+  } catch (e) { /* 离线时静默 */ }
+}
+
+$("cookieStatusLink").addEventListener("click", () => openModal("cookies"));
+$("checkCookiesBtn").addEventListener("click", async () => {
+  $("modalCookieText").textContent = "正在检测…";
+  await updateCookieStatus(true);
+  await updateCookieStatus(false);
 });
 
 /* ================= 转换流程 ================= */
@@ -845,6 +923,8 @@ $("quitBtn").addEventListener("click", async () => {
 /* ================= 启动 ================= */
 (async function init() {
   await loadConfig();
+  // 每 30 秒同步一次 Cookies 状态（后端每 3 分钟自动重检）
+  setInterval(() => updateCookieStatus(false), 30000);
   const last = localStorage.getItem("bili2doc_last_job");
   if (last) {
     try {

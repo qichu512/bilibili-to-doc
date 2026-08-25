@@ -1,5 +1,28 @@
 @echo off
-rem B站视频转文档 - 控制台启动（与桌面快捷方式等效）
-rem 打开一个命令行窗口显示运行状态；关闭该窗口即可停止程序
-cd /d "C:\common\bili2doc"
-"C:\Python314\python.exe" "C:\common\bili2doc\app.py"
+rem ============================================
+rem  bilibili-to-doc - launcher (double-click to run)
+rem  Auto-installs dependencies on first run; opens a console window
+rem  showing status; close that window to stop the program.
+rem ============================================
+cd /d "%~dp0"
+
+where python >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] Python not found. Install Python 3.10+ and check "Add python.exe to PATH".
+    pause
+    exit /b 1
+)
+
+python -c "import yt_dlp" >nul 2>nul
+if errorlevel 1 (
+    echo First run: installing dependency yt-dlp - requires network...
+    python -m pip install -r "%~dp0requirements.txt"
+    if errorlevel 1 (
+        echo [ERROR] Dependency install failed. Run manually: pip install -r requirements.txt
+        pause
+        exit /b 1
+    )
+)
+
+python "%~dp0app.py"
+if errorlevel 1 pause

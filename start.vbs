@@ -1,6 +1,7 @@
 ' bilibili-to-doc launcher (used by the desktop shortcut)
-' Opens a console window showing the running status.
-' Closing that console window stops the program.
+' Opens start.bat's console window; closing that window stops the program.
+Set fso = CreateObject("Scripting.FileSystemObject")
 Set sh = CreateObject("WScript.Shell")
-sh.CurrentDirectory = "C:\common\bili2doc"
-sh.Run """C:\Python314\python.exe"" ""C:\common\bili2doc\app.py""", 1, False
+dir = fso.GetParentFolderName(WScript.ScriptFullName)
+sh.CurrentDirectory = dir
+sh.Run """" & dir & "\start.bat""", 1, False

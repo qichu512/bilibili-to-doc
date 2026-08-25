@@ -4,13 +4,25 @@
 
 ## 快速开始
 
-1. 双击桌面的 **「B站视频转文档」** 快捷方式：会弹出一个**命令行窗口**（标题：B站视频转文档 · 本地服务），同时自动打开浏览器页面。
-2. 点击输入框**右上角的 ⚙ 设置按钮**：
+### 本机已部署
+
+双击桌面的 **「B站视频转文档」** 快捷方式即可使用，流程见下。
+
+### 从仓库克隆（新用户）
+
+1. 安装 Python 3.10+（安装时勾选 *Add python.exe to PATH*），克隆本仓库。
+2. 双击 `install-shortcut.bat` → 桌面生成「B站视频转文档」快捷方式（不想建快捷方式也可直接双击 `start.bat`）。
+3. 首次启动会自动安装依赖 `yt-dlp`（需联网）。
+4. 网页打开后，点击输入框**右上角的 ⚙ 设置按钮**，配置**你自己的**：
    - 🍪 **B站 Cookies**：导入 cookies.txt 文件 / 粘贴 Cookie 文本 / 从浏览器读取（B 站 AI 字幕通常需要登录态）。
    - 🤖 **AI 模型 API**：填写任意 OpenAI 兼容接口的 Base URL、API Key、模型名称（如 DeepSeek、OpenAI、Moonshot、通义等），可点「测试连接」验证。
    - 📁 **保存**：设置文档保存目录（默认桌面）。
-3. 在输入框粘贴 B 站视频链接（如 `https://www.bilibili.com/video/BV1xxxxxxxxxx`），点击 **生成文档**。
-4. 完成后页面会预览生成的 Markdown，可下载、复制或直接打开所在文件夹。
+
+> 为什么 Cookies 和 API Key 要自己填：它们是个人凭据，仓库里不包含任何作者的配置
+> （`config.json` / `data/` 被 `.gitignore` 排除，首次运行自动生成）。
+
+5. 在输入框粘贴 B 站视频链接（如 `https://www.bilibili.com/video/BV1xxxxxxxxxx`），点击 **生成文档**。
+6. 完成后页面会预览生成的 Markdown，可下载、复制或直接打开所在文件夹。
 
 ## 启动与停止
 
@@ -33,21 +45,23 @@ B站视频链接
 
 ```
 bili2doc/
-├── app.py            # 本地 Web 服务（纯 Python 标准库 + yt-dlp）
-├── web/index.html    # 网页前端（输入框 + 设置弹窗 + 结果预览）
-├── start.vbs         # 隐藏窗口启动器（桌面快捷方式调用它）
-├── start.bat         # 控制台启动（调试用）
-├── make_icon.py      # 生成 app.ico 图标
-├── app.ico           # 应用图标
-├── config.json       # 用户配置（运行时自动生成）
-├── data/cookies.txt  # 转换后的 Netscape 格式 Cookies（运行时生成）
-└── app.log           # 运行日志
+├── app.py                 # 本地 Web 服务（纯 Python 标准库 + yt-dlp）
+├── web/index.html         # 网页前端（输入框 + 设置弹窗 + 结果预览）
+├── start.bat              # 启动脚本（自动装依赖、双击即用；关窗口即停止）
+├── start.vbs              # 隐藏窗口启动器（桌面快捷方式调用它）
+├── install-shortcut.bat   # 双击在桌面创建快捷方式（内含 install-shortcut.ps1）
+├── make_icon.py           # 生成 app.ico 图标
+├── app.ico                # 应用图标
+├── config.example.json    # 配置格式示例（真实配置运行时生成，不入库）
+├── config.json            # 用户配置（运行时自动生成，被 .gitignore 排除）
+├── data/cookies.txt       # 转换后的 Netscape 格式 Cookies（运行时生成，被排除）
+└── app.log                # 运行日志（被排除）
 ```
 
 ## 环境要求
 
-- Windows 10/11，Python 3.10+（当前机器：`C:\Python314\python.exe`）
-- yt-dlp：`pip install yt-dlp`（本机已安装）
+- Windows 10/11，Python 3.10+（需在 PATH 中，`start.bat` 会自动检测）
+- yt-dlp：首次运行 `start.bat` 会自动安装；也可手动 `pip install -r requirements.txt`
 - 浏览器（仅「从浏览器读取 Cookies」模式需要）
 
 ## 常见问题
